@@ -2,8 +2,8 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   Plus, Trash2, Check, Clock, StickyNote, X, Bell, Search,
   BarChart2, Settings, Home, Flame, Star, AlertCircle,
-  ChevronRight, Volume2, VolumeX, Moon, Sun, RefreshCw,
-  TrendingUp, Award, Zap,
+  ChevronRight, RefreshCw, TrendingUp, Award, Zap,
+  User, Edit3, Target, Calendar, Save,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -14,7 +14,7 @@ import {
 
 type Category = "health" | "work" | "personal" | "fitness" | "mindfulness";
 type Priority = "high" | "medium" | "low";
-type Tab = "home" | "stats" | "settings";
+type Tab = "home" | "stats" | "profile" | "settings";
 
 interface Task {
   id: string;
@@ -25,6 +25,14 @@ interface Task {
   priority: Priority;
   completed: boolean;
   completedAt?: number;
+}
+
+interface Profile {
+  name: string;
+  tagline: string;
+  avatarColor: string;
+  dailyGoal: number;
+  joinDate: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -42,6 +50,10 @@ const PRIORITY_META: Record<Priority, { label: string; color: string }> = {
   medium: { label: "Medium", color: "#ffc048" },
   low:    { label: "Low",    color: "#48dbac" },
 };
+
+const AVATAR_COLORS = [
+  "#7c6ff7","#ff6b6b","#48dbac","#ffc048","#54a0ff","#f368e0","#ff9f43","#00d2d3",
+];
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -66,6 +78,14 @@ const INITIAL_TASKS: Task[] = [
   { id: "7", name: "Review tomorrow",     time: "22:00", notes: "5-min plan for the next day",       category: "work",        priority: "medium", completed: false },
 ];
 
+const INITIAL_PROFILE: Profile = {
+  name: "Alex",
+  tagline: "Building better habits, one day at a time.",
+  avatarColor: "#7c6ff7",
+  dailyGoal: 6,
+  joinDate: "Jan 2025",
+};
+
 const WEEKLY_DATA = [
   { day: "Mon", done: 5, total: 7 },
   { day: "Tue", done: 7, total: 7 },
@@ -81,8 +101,7 @@ const WEEKLY_DATA = [
 function formatTime(t: string) {
   const [hStr, mStr] = t.split(":");
   const h = parseInt(hStr);
-  const ampm = h >= 12 ? "PM" : "AM";
-  return `${h % 12 || 12}:${mStr} ${ampm}`;
+  return `${h % 12 || 12}:${mStr} ${h >= 12 ? "PM" : "AM"}`;
 }
 
 function isOverdue(time: string) {
@@ -91,26 +110,50 @@ function isOverdue(time: string) {
   return now.getHours() * 60 + now.getMinutes() > h * 60 + m;
 }
 
-// ─── Confetti ─────────────────────────────────────────────────────────────────
-
-interface Particle {
-  id: number;
-  x: number;
-  color: string;
-  size: number;
-  delay: number;
+function getInitials(name: string) {
+  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
+
+function greetingWord() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+
+function Avatar({ profile, size = 44, pulse = false }: { profile: Profile; size?: number; pulse?: boolean }) {
+  return (
+    <div
+      className="rounded-full flex items-center justify-center font-bold flex-shrink-0"
+      style={{
+        width: size,
+        height: size,
+        background: `linear-gradient(135deg, ${profile.avatarColor} 0%, ${profile.avatarColor}bb 100%)`,
+        fontSize: size * 0.36,
+        color: "#fff",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        boxShadow: `0 4px 16px ${profile.avatarColor}55`,
+        animation: pulse ? "breathe 3s ease-in-out infinite" : "none",
+      }}
+    >
+      {getInitials(profile.name)}
+    </div>
+  );
+}
+
+// ─── Confetti ─────────────────────────────────────────────────────────────────
 
 function Confetti({ origin }: { origin: { x: number; y: number } }) {
   const colors = ["#7c6ff7","#ff6b6b","#48dbac","#ffc048","#54a0ff","#ffffff"];
-  const particles: Particle[] = Array.from({ length: 20 }, (_, i) => ({
+  const particles = Array.from({ length: 22 }, (_, i) => ({
     id: i,
-    x: (Math.random() - 0.5) * 160,
+    x: (Math.random() - 0.5) * 170,
     color: colors[i % colors.length],
     size: Math.random() * 6 + 4,
     delay: Math.random() * 0.15,
   }));
-
   return (
     <div className="fixed inset-0 pointer-events-none z-50" style={{ overflow: "hidden" }}>
       {particles.map((p) => (
@@ -166,33 +209,26 @@ function AmbientOrbs() {
 
 function RippleFAB({ onClick }: { onClick: () => void }) {
   const [ripples, setRipples] = useState<number[]>([]);
-
   const handleClick = () => {
     const id = Date.now();
     setRipples((r) => [...r, id]);
     setTimeout(() => setRipples((r) => r.filter((x) => x !== id)), 600);
     onClick();
   };
-
   return (
     <button
       onClick={handleClick}
-      className="absolute bottom-8 right-6 w-14 h-14 rounded-full flex items-center justify-center"
+      className="absolute bottom-20 right-6 w-14 h-14 rounded-full flex items-center justify-center"
       style={{
         background: "linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%)",
         boxShadow: "0 6px 24px rgba(255,107,107,0.5)",
         animation: "fabPulse 2.5s ease-in-out infinite",
+        zIndex: 10,
       }}
     >
       {ripples.map((id) => (
-        <span
-          key={id}
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: "rgba(255,255,255,0.35)",
-            animation: "rippleOut 0.6s ease-out forwards",
-          }}
-        />
+        <span key={id} className="absolute inset-0 rounded-full"
+          style={{ background: "rgba(255,255,255,0.35)", animation: "rippleOut 0.6s ease-out forwards" }} />
       ))}
       <Plus size={24} color="#fff" strokeWidth={2.5} style={{ position: "relative", zIndex: 1 }} />
     </button>
@@ -218,7 +254,7 @@ function SwipeCard({ task, index, onComplete, onDelete }: SwipeCardProps) {
   const THRESHOLD = 100;
 
   useEffect(() => {
-    const t = setTimeout(() => setMounted(true), index * 60);
+    const t = setTimeout(() => setMounted(true), index * 55);
     return () => clearTimeout(t);
   }, [index]);
 
@@ -227,12 +263,10 @@ function SwipeCard({ task, index, onComplete, onDelete }: SwipeCardProps) {
     setIsDragging(true);
     cardRef.current?.setPointerCapture(e.pointerId);
   };
-
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDragging) return;
     setOffsetX(e.clientX - startX.current);
   };
-
   const handlePointerUp = () => {
     setIsDragging(false);
     if (offsetX > THRESHOLD) {
@@ -259,26 +293,21 @@ function SwipeCard({ task, index, onComplete, onDelete }: SwipeCardProps) {
       className="relative overflow-hidden rounded-2xl mb-3"
       style={{
         opacity: mounted ? 1 : 0,
-        transform: mounted ? "translateY(0)" : "translateY(20px)",
+        transform: mounted ? "translateY(0)" : "translateY(18px)",
         transition: dismissed
           ? "height 0.3s ease, opacity 0.3s ease"
-          : `opacity 0.4s ease ${index * 0.06}s, transform 0.4s ease ${index * 0.06}s`,
+          : `opacity 0.4s ease ${index * 0.055}s, transform 0.4s ease ${index * 0.055}s`,
         height: dismissed ? 0 : undefined,
       }}
     >
-      {/* Behind-card actions */}
       <div className="absolute inset-0 flex items-center justify-between px-6 rounded-2xl">
-        <div
-          className="flex items-center gap-2 font-semibold text-sm"
-          style={{ color: "#48dbac", opacity: showComplete ? swipeProgress : 0 }}
-        >
+        <div className="flex items-center gap-2 font-semibold text-sm"
+          style={{ color: "#48dbac", opacity: showComplete ? swipeProgress : 0 }}>
           <Check size={20} />
           <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Done!</span>
         </div>
-        <div
-          className="flex items-center gap-2 font-semibold text-sm"
-          style={{ color: "#ff6b6b", opacity: showDelete ? swipeProgress : 0 }}
-        >
+        <div className="flex items-center gap-2 font-semibold text-sm"
+          style={{ color: "#ff6b6b", opacity: showDelete ? swipeProgress : 0 }}>
           <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Delete</span>
           <Trash2 size={20} />
         </div>
@@ -297,19 +326,11 @@ function SwipeCard({ task, index, onComplete, onDelete }: SwipeCardProps) {
           boxShadow: "0 2px 16px rgba(15,14,42,0.1)",
         }}
       >
-        {/* Priority stripe */}
-        <div
-          className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full"
-          style={{ background: pri.color }}
-        />
-
+        <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full" style={{ background: pri.color }} />
         <div className="flex items-start gap-3 pl-2">
           <button
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => {
-              const rect = cardRef.current?.getBoundingClientRect();
-              if (rect) onComplete(task.id, rect);
-            }}
+            onClick={() => { const r = cardRef.current?.getBoundingClientRect(); if (r) onComplete(task.id, r); }}
             className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
             style={{
               borderColor: task.completed ? "#48dbac" : "#d1cff0",
@@ -322,33 +343,23 @@ function SwipeCard({ task, index, onComplete, onDelete }: SwipeCardProps) {
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <p
-                className="font-semibold leading-snug"
+              <p className="font-semibold leading-snug"
                 style={{
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   fontSize: "0.9375rem",
                   color: task.completed ? "#a09cc4" : "#1a1535",
                   textDecoration: task.completed ? "line-through" : "none",
-                }}
-              >
+                }}>
                 {task.name}
               </p>
               <ChevronRight size={15} style={{ color: "#d1cff0", flexShrink: 0 }} />
             </div>
-
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span
-                className="flex items-center gap-1 text-xs font-medium"
-                style={{
-                  color: overdue ? "#ff6b6b" : "#8b85b8",
-                  fontFamily: "'Nunito', sans-serif",
-                  animation: overdue ? "overdueFlash 1.5s ease-in-out infinite" : "none",
-                }}
-              >
+              <span className="flex items-center gap-1 text-xs font-medium"
+                style={{ color: overdue ? "#ff6b6b" : "#8b85b8", fontFamily: "'Nunito', sans-serif", animation: overdue ? "overdueFlash 1.5s ease-in-out infinite" : "none" }}>
                 {overdue && <AlertCircle size={10} />}
                 <Clock size={10} />
-                {formatTime(task.time)}
-                {overdue && " · Overdue"}
+                {formatTime(task.time)}{overdue && " · Overdue"}
               </span>
               {task.notes && (
                 <span className="flex items-center gap-1 text-xs" style={{ color: "#b8b4d8", fontFamily: "'Nunito', sans-serif" }}>
@@ -357,22 +368,14 @@ function SwipeCard({ task, index, onComplete, onDelete }: SwipeCardProps) {
                 </span>
               )}
             </div>
-
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-              <span
-                className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
-                style={{ background: cat.bg, color: cat.color, fontFamily: "'Nunito', sans-serif" }}
-              >
+              <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: cat.bg, color: cat.color, fontFamily: "'Nunito', sans-serif" }}>
                 {cat.label}
               </span>
-              <span
-                className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
-                style={{ background: `${pri.color}18`, color: pri.color, fontFamily: "'Nunito', sans-serif" }}
-              >
-                {task.priority === "high" && "🔥 "}
-                {task.priority === "medium" && "⚡ "}
-                {task.priority === "low" && "• "}
-                {pri.label}
+              <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: `${pri.color}18`, color: pri.color, fontFamily: "'Nunito', sans-serif" }}>
+                {task.priority === "high" ? "🔥" : task.priority === "medium" ? "⚡" : "•"} {pri.label}
               </span>
             </div>
           </div>
@@ -384,13 +387,7 @@ function SwipeCard({ task, index, onComplete, onDelete }: SwipeCardProps) {
 
 // ─── Add Task Modal ────────────────────────────────────────────────────────────
 
-interface AddTaskModalProps {
-  open: boolean;
-  onClose: () => void;
-  onAdd: (task: Omit<Task, "id" | "completed">) => void;
-}
-
-function AddTaskModal({ open, onClose, onAdd }: AddTaskModalProps) {
+function AddTaskModal({ open, onClose, onAdd }: { open: boolean; onClose: () => void; onAdd: (t: Omit<Task,"id"|"completed">) => void }) {
   const [name, setName]         = useState("");
   const [time, setTime]         = useState("08:00");
   const [notes, setNotes]       = useState("");
@@ -404,133 +401,80 @@ function AddTaskModal({ open, onClose, onAdd }: AddTaskModalProps) {
     onClose();
   };
 
+  const iStyle: React.CSSProperties = { background: "#f5f4ff", color: "#1a1535", fontFamily: "'Nunito', sans-serif", border: "2px solid transparent", transition: "border-color 0.2s" };
+  const focusOn  = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => (e.target.style.borderColor = "#7c6ff7");
+  const focusOff = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => (e.target.style.borderColor = "transparent");
+
   return (
     <>
       <div
         className="fixed inset-0 z-40 transition-opacity duration-300"
-        style={{
-          background: "rgba(10,9,30,0.75)",
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? "auto" : "none",
-          backdropFilter: "blur(6px)",
-        }}
+        style={{ background: "rgba(10,9,30,0.75)", opacity: open ? 1 : 0, pointerEvents: open ? "auto" : "none", backdropFilter: "blur(6px)" }}
         onClick={onClose}
       />
       <div
         className="fixed bottom-0 left-1/2 z-50 w-full"
-        style={{
-          maxWidth: 430,
-          transform: `translateX(-50%) translateY(${open ? 0 : "100%"})`,
-          transition: "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
-        }}
+        style={{ maxWidth: 430, transform: `translateX(-50%) translateY(${open ? 0 : "100%"})`, transition: "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)" }}
       >
         <div className="bg-white rounded-t-3xl px-6 pt-4 pb-8" style={{ boxShadow: "0 -8px 48px rgba(15,14,42,0.3)" }}>
           <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: "#e0ddf5" }} />
-
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-xl font-bold" style={{ color: "#1a1535", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              New Reminder
-            </h2>
+            <h2 className="text-xl font-bold" style={{ color: "#1a1535", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>New Reminder</h2>
             <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "#f0eeff" }}>
               <X size={16} color="#7c6ff7" />
             </button>
           </div>
 
-          {/* Name */}
-          <ModalField label="Task name">
-            <input
-              type="text" value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Morning run"
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = "#7c6ff7")}
-              onBlur={(e) => (e.target.style.borderColor = "transparent")}
-            />
-          </ModalField>
+          {[
+            { label: "Task name", el: <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Morning run" className="w-full rounded-xl px-4 py-3 text-sm outline-none" style={iStyle} onFocus={focusOn} onBlur={focusOff} /> },
+            { label: "Time",      el: <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full rounded-xl px-4 py-3 text-sm outline-none" style={iStyle} onFocus={focusOn} onBlur={focusOff} /> },
+          ].map(({ label, el }) => (
+            <div key={label} className="mb-4">
+              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>{label}</label>
+              {el}
+            </div>
+          ))}
 
-          {/* Time */}
-          <ModalField label="Time">
-            <input
-              type="time" value={time} onChange={(e) => setTime(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = "#7c6ff7")}
-              onBlur={(e) => (e.target.style.borderColor = "transparent")}
-            />
-          </ModalField>
-
-          {/* Priority */}
-          <ModalField label="Priority">
+          <div className="mb-4">
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>Priority</label>
             <div className="flex gap-2">
               {(["high","medium","low"] as Priority[]).map((p) => {
-                const m = PRIORITY_META[p];
-                const sel = priority === p;
+                const m = PRIORITY_META[p]; const sel = priority === p;
                 return (
-                  <button key={p} onClick={() => setPriority(p)}
-                    className="flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all"
-                    style={{
-                      background: sel ? m.color : `${m.color}15`,
-                      color: sel ? "#fff" : m.color,
-                      fontFamily: "'Nunito', sans-serif",
-                      transform: sel ? "scale(1.04)" : "scale(1)",
-                      boxShadow: sel ? `0 2px 10px ${m.color}44` : "none",
-                    }}
-                  >
+                  <button key={p} onClick={() => setPriority(p)} className="flex-1 py-2 rounded-xl text-xs font-bold capitalize transition-all"
+                    style={{ background: sel ? m.color : `${m.color}15`, color: sel ? "#fff" : m.color, fontFamily: "'Nunito', sans-serif", transform: sel ? "scale(1.04)" : "scale(1)", boxShadow: sel ? `0 2px 10px ${m.color}44` : "none" }}>
                     {p === "high" ? "🔥" : p === "medium" ? "⚡" : "•"} {p}
                   </button>
                 );
               })}
             </div>
-          </ModalField>
+          </div>
 
-          {/* Category */}
-          <ModalField label="Category">
+          <div className="mb-4">
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>Category</label>
             <div className="flex gap-2 flex-wrap">
               {(Object.keys(CATEGORY_META) as Category[]).map((cat) => {
-                const m = CATEGORY_META[cat];
-                const sel = category === cat;
+                const m = CATEGORY_META[cat]; const sel = category === cat;
                 return (
-                  <button key={cat} onClick={() => setCategory(cat)}
-                    className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                    style={{
-                      background: sel ? m.color : m.bg,
-                      color: sel ? "#fff" : m.color,
-                      fontFamily: "'Nunito', sans-serif",
-                      transform: sel ? "scale(1.05)" : "scale(1)",
-                      boxShadow: sel ? `0 2px 8px ${m.color}44` : "none",
-                    }}
-                  >
+                  <button key={cat} onClick={() => setCategory(cat)} className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                    style={{ background: sel ? m.color : m.bg, color: sel ? "#fff" : m.color, fontFamily: "'Nunito', sans-serif", transform: sel ? "scale(1.05)" : "scale(1)", boxShadow: sel ? `0 2px 8px ${m.color}44` : "none" }}>
                     {m.label}
                   </button>
                 );
               })}
             </div>
-          </ModalField>
+          </div>
 
-          {/* Notes */}
-          <ModalField label="Notes (optional)">
-            <textarea
-              value={notes} onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add a note..." rows={2}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-none"
-              style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = "#7c6ff7")}
-              onBlur={(e) => (e.target.style.borderColor = "transparent")}
-            />
-          </ModalField>
+          <div className="mb-6">
+            <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>Notes (optional)</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add a note..." rows={2}
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none resize-none" style={iStyle}
+              onFocus={focusOn as any} onBlur={focusOff as any} />
+          </div>
 
-          <button
-            onClick={handleSubmit} disabled={!name.trim()}
+          <button onClick={handleSubmit} disabled={!name.trim()}
             className="w-full py-4 rounded-2xl font-bold text-base transition-all"
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              background: name.trim() ? "linear-gradient(135deg, #7c6ff7 0%, #9d89ff 100%)" : "#e0ddf5",
-              color: name.trim() ? "#fff" : "#b8b4d8",
-              boxShadow: name.trim() ? "0 4px 20px rgba(124,111,247,0.4)" : "none",
-              cursor: name.trim() ? "pointer" : "default",
-              transform: name.trim() ? "translateY(0)" : "none",
-            }}
-          >
+            style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", background: name.trim() ? "linear-gradient(135deg, #7c6ff7 0%, #9d89ff 100%)" : "#e0ddf5", color: name.trim() ? "#fff" : "#b8b4d8", boxShadow: name.trim() ? "0 4px 20px rgba(124,111,247,0.4)" : "none", cursor: name.trim() ? "pointer" : "default" }}>
             Add Reminder
           </button>
         </div>
@@ -539,88 +483,50 @@ function AddTaskModal({ open, onClose, onAdd }: AddTaskModalProps) {
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  background: "#f5f4ff",
-  color: "#1a1535",
-  fontFamily: "'Nunito', sans-serif",
-  border: "2px solid transparent",
-  transition: "border-color 0.2s",
-};
-
-function ModalField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-4">
-      <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
-
 // ─── Stats Screen ─────────────────────────────────────────────────────────────
 
 function StatsScreen({ tasks }: { tasks: Task[] }) {
   const completedCount = tasks.filter((t) => t.completed).length;
   const rate = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
-
   const catData = (Object.keys(CATEGORY_META) as Category[]).map((cat) => ({
-    name: CATEGORY_META[cat].label,
-    value: tasks.filter((t) => t.category === cat).length,
-    color: CATEGORY_META[cat].color,
+    name: CATEGORY_META[cat].label, value: tasks.filter((t) => t.category === cat).length, color: CATEGORY_META[cat].color,
   })).filter((d) => d.value > 0);
 
   return (
-    <div className="px-6 pt-2 pb-24 overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
-      <h2 className="text-xl font-extrabold mb-1" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-        Your Progress
-      </h2>
-      <p className="text-xs mb-5" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>
-        This week at a glance
-      </p>
+    <div className="px-6 pt-2 pb-6 overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
+      <h2 className="text-xl font-extrabold mb-1" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Your Progress</h2>
+      <p className="text-xs mb-5" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>This week at a glance</p>
 
-      {/* KPI row */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
           { icon: <Check size={16} color="#48dbac" />, label: "Completed", val: completedCount, bg: "rgba(72,219,172,0.12)" },
-          { icon: <TrendingUp size={16} color="#7c6ff7" />, label: "Rate",      val: `${rate}%`,       bg: "rgba(124,111,247,0.12)" },
-          { icon: <Flame size={16} color="#ff6b6b" />,  label: "Streak",    val: "5 🔥",         bg: "rgba(255,107,107,0.12)" },
+          { icon: <TrendingUp size={16} color="#7c6ff7" />, label: "Rate", val: `${rate}%`, bg: "rgba(124,111,247,0.12)" },
+          { icon: <Flame size={16} color="#ff6b6b" />, label: "Streak", val: "5 🔥", bg: "rgba(255,107,107,0.12)" },
         ].map((kpi, i) => (
           <div key={i} className="rounded-2xl p-3 flex flex-col gap-1.5 items-center"
             style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.12)", animation: `statBounce 0.5s ease ${i * 0.1}s both` }}>
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: kpi.bg }}>
-              {kpi.icon}
-            </div>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: kpi.bg }}>{kpi.icon}</div>
             <span className="text-lg font-extrabold" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{kpi.val}</span>
             <span className="text-xs" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>{kpi.label}</span>
           </div>
         ))}
       </div>
 
-      {/* Bar chart */}
       <div className="rounded-2xl p-4 mb-4" style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.12)" }}>
-        <p className="text-sm font-bold mb-3" style={{ color: "#c4bdff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-          Weekly Completion
-        </p>
+        <p className="text-sm font-bold mb-3" style={{ color: "#c4bdff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Weekly Completion</p>
         <ResponsiveContainer width="100%" height={140}>
           <BarChart data={WEEKLY_DATA} barSize={22} barGap={4}>
             <XAxis dataKey="day" tick={{ fill: "#8b85b8", fontSize: 11, fontFamily: "'Nunito', sans-serif" }} axisLine={false} tickLine={false} />
             <YAxis hide />
-            <Tooltip
-              contentStyle={{ background: "#13113a", border: "1px solid rgba(124,111,247,0.2)", borderRadius: 10, color: "#f0eeff", fontFamily: "'Nunito', sans-serif", fontSize: 12 }}
-              cursor={{ fill: "rgba(124,111,247,0.08)" }}
-            />
+            <Tooltip contentStyle={{ background: "#13113a", border: "1px solid rgba(124,111,247,0.2)", borderRadius: 10, color: "#f0eeff", fontFamily: "'Nunito', sans-serif", fontSize: 12 }} cursor={{ fill: "rgba(124,111,247,0.08)" }} />
             <Bar dataKey="total" fill="rgba(124,111,247,0.15)" radius={[6,6,0,0]} />
-            <Bar dataKey="done" fill="#7c6ff7" radius={[6,6,0,0]} />
+            <Bar dataKey="done"  fill="#7c6ff7"               radius={[6,6,0,0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Pie chart */}
       <div className="rounded-2xl p-4" style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.12)" }}>
-        <p className="text-sm font-bold mb-3" style={{ color: "#c4bdff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-          By Category
-        </p>
+        <p className="text-sm font-bold mb-3" style={{ color: "#c4bdff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>By Category</p>
         <div className="flex items-center gap-4">
           <PieChart width={120} height={120}>
             <Pie data={catData} dataKey="value" cx={55} cy={55} innerRadius={32} outerRadius={52} strokeWidth={0}>
@@ -644,12 +550,172 @@ function StatsScreen({ tasks }: { tasks: Task[] }) {
   );
 }
 
+// ─── Profile Screen ───────────────────────────────────────────────────────────
+
+function ProfileScreen({ profile, setProfile, tasks }: { profile: Profile; setProfile: (p: Profile) => void; tasks: Task[] }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState<Profile>(profile);
+
+  const save = () => { setProfile(draft); setEditing(false); };
+  const cancel = () => { setDraft(profile); setEditing(false); };
+
+  const totalCompleted = tasks.filter((t) => t.completed).length + 42; // simulated history
+
+  const inputCls = "w-full rounded-xl px-4 py-2.5 text-sm outline-none";
+  const inputSty: React.CSSProperties = { background: "#13113a", color: "#f0eeff", border: "1px solid rgba(124,111,247,0.25)", fontFamily: "'Nunito', sans-serif", transition: "border-color 0.2s" };
+
+  return (
+    <div className="px-6 pt-2 pb-6 overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
+      {/* Profile card */}
+      <div
+        className="rounded-3xl p-5 mb-5 relative overflow-hidden"
+        style={{ background: "linear-gradient(135deg, #1e1b42 0%, #261e55 100%)", border: "1px solid rgba(124,111,247,0.2)" }}
+      >
+        {/* Shimmer */}
+        <div className="absolute inset-0 pointer-events-none" style={{ animation: "shimmerSlide 4s ease-in-out infinite", background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.04) 50%, transparent 70%)", backgroundSize: "200% 100%" }} />
+
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <Avatar profile={editing ? draft : profile} size={68} pulse />
+            <div>
+              {editing ? (
+                <input
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  className={inputCls}
+                  style={{ ...inputSty, fontSize: "1.1rem", fontWeight: 700, padding: "6px 12px", fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                />
+              ) : (
+                <h2 className="text-xl font-extrabold" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  {profile.name}
+                </h2>
+              )}
+              <p className="text-xs mt-0.5" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>
+                Member since {profile.joinDate}
+              </p>
+            </div>
+          </div>
+          {!editing ? (
+            <button onClick={() => setEditing(true)}
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ background: "rgba(124,111,247,0.15)", border: "1px solid rgba(124,111,247,0.3)" }}>
+              <Edit3 size={14} color="#c4bdff" />
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={cancel} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(255,107,107,0.15)" }}>
+                <X size={14} color="#ff6b6b" />
+              </button>
+              <button onClick={save} className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "rgba(72,219,172,0.15)" }}>
+                <Save size={14} color="#48dbac" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Tagline */}
+        {editing ? (
+          <input value={draft.tagline} onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
+            placeholder="Your tagline..." className={inputCls} style={inputSty} />
+        ) : (
+          <p className="text-sm italic" style={{ color: "#9d97c8", fontFamily: "'Nunito', sans-serif" }}>
+            "{profile.tagline}"
+          </p>
+        )}
+
+        {/* Color picker */}
+        {editing && (
+          <div className="mt-3">
+            <p className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>Avatar color</p>
+            <div className="flex gap-2 flex-wrap">
+              {AVATAR_COLORS.map((c) => (
+                <button key={c} onClick={() => setDraft({ ...draft, avatarColor: c })}
+                  className="w-7 h-7 rounded-full transition-all"
+                  style={{
+                    background: c,
+                    transform: draft.avatarColor === c ? "scale(1.25)" : "scale(1)",
+                    boxShadow: draft.avatarColor === c ? `0 0 10px ${c}88` : "none",
+                    border: draft.avatarColor === c ? "2px solid #fff" : "2px solid transparent",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {[
+          { icon: <Check size={15} color="#48dbac" />, label: "Total done",   val: totalCompleted, bg: "rgba(72,219,172,0.1)" },
+          { icon: <Flame size={15} color="#ff6b6b" />, label: "Day streak",   val: "5 🔥",         bg: "rgba(255,107,107,0.1)" },
+          { icon: <Target size={15} color="#ffc048" />, label: "Daily goal",  val: profile.dailyGoal, bg: "rgba(255,192,72,0.1)" },
+        ].map((s, i) => (
+          <div key={i} className="rounded-2xl p-3 flex flex-col items-center gap-1.5"
+            style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.1)" }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: s.bg }}>{s.icon}</div>
+            <span className="text-base font-extrabold" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{s.val}</span>
+            <span className="text-xs text-center" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>{s.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Daily goal editor */}
+      {editing && (
+        <div className="rounded-2xl p-4 mb-4" style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.12)" }}>
+          <p className="text-sm font-bold mb-3" style={{ color: "#c4bdff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Daily task goal</p>
+          <div className="flex items-center gap-3">
+            {[3,5,6,7,8,10].map((n) => (
+              <button key={n} onClick={() => setDraft({ ...draft, dailyGoal: n })}
+                className="w-10 h-10 rounded-xl font-bold text-sm transition-all"
+                style={{
+                  background: draft.dailyGoal === n ? "#7c6ff7" : "rgba(124,111,247,0.1)",
+                  color: draft.dailyGoal === n ? "#fff" : "#8b85b8",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  boxShadow: draft.dailyGoal === n ? "0 2px 10px rgba(124,111,247,0.4)" : "none",
+                }}>
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Achievements */}
+      <p className="text-sm font-bold mb-3" style={{ color: "#c4bdff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Achievements</p>
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { icon: "🔥", label: "5-Day Streak",  unlocked: true  },
+          { icon: "⚡", label: "Speed Run",      unlocked: true  },
+          { icon: "🌟", label: "Perfectionist",  unlocked: false },
+          { icon: "🏆", label: "Champion",       unlocked: false },
+          { icon: "🎯", label: "On Target",      unlocked: true  },
+          { icon: "💎", label: "Diamond",        unlocked: false },
+        ].map((a, i) => (
+          <div key={i} className="rounded-2xl p-3 flex flex-col items-center gap-1.5"
+            style={{ background: a.unlocked ? "#1e1b42" : "#16143a", border: `1px solid ${a.unlocked ? "rgba(124,111,247,0.2)" : "rgba(124,111,247,0.06)"}`, opacity: a.unlocked ? 1 : 0.4 }}>
+            <span className="text-2xl">{a.icon}</span>
+            <span className="text-xs text-center font-semibold" style={{ color: a.unlocked ? "#c4bdff" : "#4a456e", fontFamily: "'Nunito', sans-serif" }}>{a.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings Screen ───────────────────────────────────────────────────────────
 
 function SettingsScreen() {
-  const [sound, setSound]   = useState(true);
-  const [darkMode, setDark] = useState(true);
-  const [notifTime, setNotifTime] = useState("10");
+  const [sound, setSound]     = useState(true);
+  const [darkMode, setDark]   = useState(true);
+  const [notifTime, setNotif] = useState("10");
+
+  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
+    <button onClick={onToggle} className="relative w-12 h-6 rounded-full transition-all duration-300"
+      style={{ background: on ? "#7c6ff7" : "#2e2a5a", boxShadow: on ? "0 0 12px rgba(124,111,247,0.4)" : "none" }}>
+      <span className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300" style={{ left: on ? "calc(100% - 20px)" : 4 }} />
+    </button>
+  );
 
   const Row = ({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) => (
     <div className="flex items-center justify-between py-4" style={{ borderBottom: "1px solid rgba(124,111,247,0.1)" }}>
@@ -661,64 +727,20 @@ function SettingsScreen() {
     </div>
   );
 
-  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <button
-      onClick={onToggle}
-      className="relative w-12 h-6 rounded-full transition-all duration-300"
-      style={{ background: on ? "#7c6ff7" : "#2e2a5a", boxShadow: on ? "0 0 12px rgba(124,111,247,0.4)" : "none" }}
-    >
-      <span
-        className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all duration-300"
-        style={{ left: on ? "calc(100% - 20px)" : 4 }}
-      />
-    </button>
-  );
-
   return (
-    <div className="px-6 pt-2 pb-24 overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
+    <div className="px-6 pt-2 pb-6 overflow-y-auto flex-1" style={{ scrollbarWidth: "none" }}>
       <h2 className="text-xl font-extrabold mb-1" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Settings</h2>
       <p className="text-xs mb-5" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>Customize your experience</p>
-
       <div className="rounded-2xl px-4 mb-4" style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.12)" }}>
-        <Row label="Sound effects" sub="Play sounds on task completion">
-          <Toggle on={sound} onToggle={() => setSound((v) => !v)} />
-        </Row>
-        <Row label="Dark mode" sub="Adjust the app appearance">
-          <Toggle on={darkMode} onToggle={() => setDark((v) => !v)} />
-        </Row>
+        <Row label="Sound effects" sub="Play sounds on task completion"><Toggle on={sound} onToggle={() => setSound((v) => !v)} /></Row>
+        <Row label="Dark mode" sub="Adjust the app appearance"><Toggle on={darkMode} onToggle={() => setDark((v) => !v)} /></Row>
         <Row label="Notify before" sub="Minutes before scheduled task">
-          <select
-            value={notifTime}
-            onChange={(e) => setNotifTime(e.target.value)}
+          <select value={notifTime} onChange={(e) => setNotif(e.target.value)}
             className="rounded-lg px-3 py-1.5 text-xs font-semibold outline-none"
-            style={{ background: "#13113a", color: "#c4bdff", border: "1px solid rgba(124,111,247,0.2)", fontFamily: "'Nunito', sans-serif" }}
-          >
+            style={{ background: "#13113a", color: "#c4bdff", border: "1px solid rgba(124,111,247,0.2)", fontFamily: "'Nunito', sans-serif" }}>
             {["5","10","15","30"].map((v) => <option key={v} value={v}>{v} min</option>)}
           </select>
         </Row>
-      </div>
-
-      {/* Achievements */}
-      <p className="text-sm font-bold mb-3" style={{ color: "#c4bdff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Achievements</p>
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { icon: "🔥", label: "5-Day Streak", unlocked: true },
-          { icon: "⚡", label: "Speed Run",    unlocked: true },
-          { icon: "🌟", label: "Perfectionist", unlocked: false },
-          { icon: "🏆", label: "Champion",     unlocked: false },
-          { icon: "🎯", label: "On Target",    unlocked: true },
-          { icon: "💎", label: "Diamond",      unlocked: false },
-        ].map((a, i) => (
-          <div key={i} className="rounded-2xl p-3 flex flex-col items-center gap-1.5"
-            style={{
-              background: a.unlocked ? "#1e1b42" : "#16143a",
-              border: `1px solid ${a.unlocked ? "rgba(124,111,247,0.2)" : "rgba(124,111,247,0.06)"}`,
-              opacity: a.unlocked ? 1 : 0.45,
-            }}>
-            <span className="text-2xl">{a.icon}</span>
-            <span className="text-xs text-center font-semibold" style={{ color: a.unlocked ? "#c4bdff" : "#4a456e", fontFamily: "'Nunito', sans-serif" }}>{a.label}</span>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -726,27 +748,37 @@ function SettingsScreen() {
 
 // ─── Bottom Nav ────────────────────────────────────────────────────────────────
 
-function BottomNav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+function BottomNav({ tab, setTab, profile }: { tab: Tab; setTab: (t: Tab) => void; profile: Profile }) {
   const items: { id: Tab; icon: React.ReactNode; label: string }[] = [
-    { id: "home",     icon: <Home size={20} />,     label: "Home"  },
-    { id: "stats",    icon: <BarChart2 size={20} />, label: "Stats" },
-    { id: "settings", icon: <Settings size={20} />,  label: "More"  },
+    { id: "home",     icon: <Home size={19} />,     label: "Home"    },
+    { id: "stats",    icon: <BarChart2 size={19} />, label: "Stats"   },
+    { id: "profile",  icon: <User size={19} />,      label: "Profile" },
+    { id: "settings", icon: <Settings size={19} />,  label: "More"    },
   ];
   return (
-    <div
-      className="absolute bottom-0 left-0 right-0 flex items-center justify-around px-4 pt-3 pb-4"
-      style={{ background: "rgba(19,17,58,0.95)", backdropFilter: "blur(12px)", borderTop: "1px solid rgba(124,111,247,0.12)" }}
-    >
+    <div className="absolute bottom-0 left-0 right-0 flex items-center justify-around px-2 pt-3 pb-4"
+      style={{ background: "rgba(19,17,58,0.96)", backdropFilter: "blur(12px)", borderTop: "1px solid rgba(124,111,247,0.12)", zIndex: 20 }}>
       {items.map((item) => {
         const active = tab === item.id;
         return (
           <button key={item.id} onClick={() => setTab(item.id)}
-            className="flex flex-col items-center gap-1 px-5 transition-all"
-            style={{ color: active ? "#7c6ff7" : "#4a456e", transform: active ? "translateY(-2px)" : "none" }}
-          >
-            <div style={{ filter: active ? "drop-shadow(0 0 6px rgba(124,111,247,0.6))" : "none", transition: "filter 0.2s" }}>
-              {item.icon}
-            </div>
+            className="flex flex-col items-center gap-1 px-4 transition-all"
+            style={{ color: active ? "#7c6ff7" : "#4a456e", transform: active ? "translateY(-2px)" : "none" }}>
+            {item.id === "profile" ? (
+              <div style={{
+                padding: 2,
+                borderRadius: "50%",
+                border: active ? `2px solid ${profile.avatarColor}` : "2px solid transparent",
+                boxShadow: active ? `0 0 8px ${profile.avatarColor}88` : "none",
+                transition: "all 0.2s",
+              }}>
+                <Avatar profile={profile} size={26} />
+              </div>
+            ) : (
+              <div style={{ filter: active ? "drop-shadow(0 0 6px rgba(124,111,247,0.6))" : "none", transition: "filter 0.2s" }}>
+                {item.icon}
+              </div>
+            )}
             <span className="text-xs font-semibold" style={{ fontFamily: "'Nunito', sans-serif", color: active ? "#c4bdff" : "#4a456e" }}>
               {item.label}
             </span>
@@ -760,18 +792,21 @@ function BottomNav({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
 // ─── Home Screen ───────────────────────────────────────────────────────────────
 
 function HomeScreen({
-  tasks, onComplete, onDelete, onOpenModal,
+  tasks, profile, onComplete, onDelete, onOpenModal,
 }: {
   tasks: Task[];
+  profile: Profile;
   onComplete: (id: string, rect: DOMRect) => void;
   onDelete: (id: string) => void;
   onOpenModal: () => void;
 }) {
-  const [search, setSearch]   = useState("");
-  const [filter, setFilter]   = useState<"all" | "pending" | "done">("all");
-  const [sort, setSort]       = useState<"time" | "priority">("time");
+  const [search, setSearch]     = useState("");
+  const [filter, setFilter]     = useState<"all"|"pending"|"done">("all");
+  const [sort, setSort]         = useState<"time"|"priority">("time");
   const [quoteIdx, setQuoteIdx] = useState(0);
+  const [calVisible, setCalVisible] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const now = new Date();
 
@@ -780,6 +815,12 @@ function HomeScreen({
     return () => clearInterval(id);
   }, []);
 
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCalVisible(el.scrollTop < 48);
+  };
+
   const filtered = useMemo(() => {
     let list = tasks.filter((t) => {
       if (filter === "pending") return !t.completed;
@@ -787,13 +828,10 @@ function HomeScreen({
       return true;
     });
     if (search.trim()) list = list.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()));
-    if (sort === "priority") {
-      const order: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
-      list = [...list].sort((a, b) => order[a.priority] - order[b.priority]);
-    } else {
-      list = [...list].sort((a, b) => a.time.localeCompare(b.time));
-    }
-    return list;
+    const order: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
+    return [...list].sort((a, b) =>
+      sort === "priority" ? order[a.priority] - order[b.priority] : a.time.localeCompare(b.time)
+    );
   }, [tasks, filter, search, sort]);
 
   const completedCount = tasks.filter((t) => t.completed).length;
@@ -805,177 +843,146 @@ function HomeScreen({
     return { label: DAYS[i], date: d.getDate(), isToday: i === now.getDay() };
   });
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 1200);
-  };
-
-  const greeting = now.getHours() < 12 ? "Good morning" : now.getHours() < 17 ? "Good afternoon" : "Good evening";
-
   return (
     <>
-      {/* Header */}
-      <div className="px-6 pt-2 pb-4 flex-shrink-0">
-        <div className="flex items-start justify-between">
+      {/* Static header (never scrolls) */}
+      <div className="flex-shrink-0 px-6 pt-2 pb-3">
+        {/* Greeting row */}
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-xs font-medium mb-0.5" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>
+            <p className="text-xs font-medium" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>
               {DAYS[now.getDay()]}, {MONTHS[now.getMonth()]} {now.getDate()}
             </p>
-            <h1 className="text-2xl font-extrabold" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              {greeting} 👋
+            <h1 className="text-[1.35rem] font-extrabold leading-tight" style={{ color: "#f0eeff", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              {greetingWord()},{" "}
+              <span style={{ color: profile.avatarColor }}>{profile.name.split(" ")[0]}</span> 👋
             </h1>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleRefresh}
+          <div className="flex gap-2 items-center">
+            <button onClick={() => { setRefreshing(true); setTimeout(() => setRefreshing(false), 1200); }}
               className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.2)" }}
-            >
-              <RefreshCw size={15} color="#7c6ff7" style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
+              style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.2)" }}>
+              <RefreshCw size={14} color="#7c6ff7" style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }} />
             </button>
-            <button className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.2)" }}>
-              <Bell size={15} color="#7c6ff7" />
+            <button className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.2)" }}>
+              <Bell size={14} color="#7c6ff7" />
             </button>
           </div>
         </div>
 
-        {/* Quote ticker */}
-        <div
-          className="mt-3 px-3 py-2 rounded-xl flex items-center gap-2"
-          style={{ background: "rgba(124,111,247,0.08)", border: "1px solid rgba(124,111,247,0.12)" }}
-        >
+        {/* Quote */}
+        <div className="px-3 py-2 rounded-xl flex items-center gap-2 mb-3"
+          style={{ background: "rgba(124,111,247,0.08)", border: "1px solid rgba(124,111,247,0.12)" }}>
           <Zap size={13} color="#ffc048" />
-          <p
-            key={quoteIdx}
-            className="text-xs italic flex-1"
-            style={{
-              color: "#c4bdff",
-              fontFamily: "'Nunito', sans-serif",
-              animation: "quoteFade 0.5s ease",
-            }}
-          >
+          <p key={quoteIdx} className="text-xs italic flex-1"
+            style={{ color: "#c4bdff", fontFamily: "'Nunito', sans-serif", animation: "quoteFade 0.5s ease" }}>
             "{QUOTES[quoteIdx]}"
           </p>
         </div>
 
         {/* Progress card */}
-        <div
-          className="mt-3 rounded-2xl p-4 relative overflow-hidden"
-          style={{
-            background: "linear-gradient(135deg, #7c6ff7 0%, #5d52e0 100%)",
-            boxShadow: "0 8px 24px rgba(124,111,247,0.35)",
-          }}
-        >
-          {/* Shimmer stripe */}
-          <div className="absolute inset-0 pointer-events-none" style={{ animation: "shimmerSlide 3s ease-in-out infinite", background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%)", backgroundSize: "200% 100%" }} />
-
+        <div className="rounded-2xl p-4 relative overflow-hidden"
+          style={{ background: "linear-gradient(135deg, #7c6ff7 0%, #5d52e0 100%)", boxShadow: "0 8px 24px rgba(124,111,247,0.35)" }}>
+          <div className="absolute inset-0 pointer-events-none"
+            style={{ animation: "shimmerSlide 3s ease-in-out infinite", background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.06) 50%, transparent 70%)", backgroundSize: "200% 100%" }} />
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="text-xs font-semibold opacity-75" style={{ color: "#fff", fontFamily: "'Nunito', sans-serif" }}>Today's Progress</p>
+              <p className="text-xs font-semibold opacity-75 text-white" style={{ fontFamily: "'Nunito', sans-serif" }}>Today's Progress</p>
               <p className="text-2xl font-extrabold text-white mt-0.5" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                 {completedCount} <span className="text-base font-medium opacity-70">/ {tasks.length}</span>
               </p>
             </div>
             <div className="flex flex-col items-center gap-1">
-              <div
-                className="w-14 h-14 rounded-full flex items-center justify-center"
-                style={{ background: "rgba(255,255,255,0.15)", border: "3px solid rgba(255,255,255,0.3)", animation: "breathe 3s ease-in-out infinite" }}
-              >
+              <div className="w-14 h-14 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(255,255,255,0.15)", border: "3px solid rgba(255,255,255,0.3)", animation: "breathe 3s ease-in-out infinite" }}>
                 <span className="text-sm font-bold text-white" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                   {Math.round(progress * 100)}%
                 </span>
               </div>
-              <span className="text-xs font-semibold text-white opacity-75" style={{ fontFamily: "'Nunito', sans-serif" }}>
-                🔥 5-day streak
-              </span>
+              <span className="text-xs font-semibold text-white opacity-75" style={{ fontFamily: "'Nunito', sans-serif" }}>🔥 5-day streak</span>
             </div>
           </div>
           <div className="h-2 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }}>
-            <div
-              className="h-2 rounded-full transition-all duration-700"
-              style={{ width: `${progress * 100}%`, background: "#fff", boxShadow: "0 0 8px rgba(255,255,255,0.6)" }}
-            />
+            <div className="h-2 rounded-full transition-all duration-700"
+              style={{ width: `${progress * 100}%`, background: "#fff", boxShadow: "0 0 8px rgba(255,255,255,0.6)" }} />
           </div>
         </div>
 
-        {/* Week strip */}
-        <div className="flex justify-between mt-3">
-          {weekDays.map((d) => (
-            <div key={d.label} className="flex flex-col items-center gap-1.5">
-              <span className="text-xs font-medium" style={{ color: d.isToday ? "#c4bdff" : "#4a456e", fontFamily: "'Nunito', sans-serif" }}>
-                {d.label}
-              </span>
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-                style={{
-                  background: d.isToday ? "#7c6ff7" : "transparent",
-                  color: d.isToday ? "#fff" : "#6b6490",
-                  fontFamily: "'Plus Jakarta Sans', sans-serif",
-                  boxShadow: d.isToday ? "0 2px 10px rgba(124,111,247,0.5)" : "none",
-                  animation: d.isToday ? "breathe 3s ease-in-out infinite" : "none",
-                }}
-              >
-                {d.date}
+        {/* Calendar strip — collapses on scroll */}
+        <div style={{
+          maxHeight: calVisible ? 80 : 0,
+          opacity: calVisible ? 1 : 0,
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease",
+          marginTop: calVisible ? 12 : 0,
+        }}>
+          <div className="flex justify-between">
+            {weekDays.map((d) => (
+              <div key={d.label} className="flex flex-col items-center gap-1.5">
+                <span className="text-xs font-medium" style={{ color: d.isToday ? "#c4bdff" : "#4a456e", fontFamily: "'Nunito', sans-serif" }}>
+                  {d.label}
+                </span>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={{
+                    background: d.isToday ? "#7c6ff7" : "transparent",
+                    color: d.isToday ? "#fff" : "#6b6490",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    boxShadow: d.isToday ? "0 2px 10px rgba(124,111,247,0.5)" : "none",
+                    animation: d.isToday ? "breathe 3s ease-in-out infinite" : "none",
+                  }}>
+                  {d.date}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Search + controls */}
-      <div className="px-6 mb-3 flex-shrink-0">
-        <div
-          className="flex items-center gap-2 rounded-xl px-3 py-2 mb-3"
-          style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.12)" }}
-        >
-          <Search size={15} color="#8b85b8" />
-          <input
-            type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tasks..."
-            className="flex-1 bg-transparent text-sm outline-none"
-            style={{ color: "#f0eeff", fontFamily: "'Nunito', sans-serif" }}
-          />
-          {search && <button onClick={() => setSearch("")}><X size={14} color="#8b85b8" /></button>}
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
-            {(["all","pending","done"] as const).map((f) => (
-              <button key={f} onClick={() => setFilter(f)}
-                className="px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition-all"
-                style={{
-                  fontFamily: "'Nunito', sans-serif",
-                  background: filter === f ? "#7c6ff7" : "#1e1b42",
-                  color: filter === f ? "#fff" : "#8b85b8",
-                  boxShadow: filter === f ? "0 2px 10px rgba(124,111,247,0.4)" : "none",
-                }}
-              >
-                {f}
-              </button>
             ))}
           </div>
-          <button
-            onClick={() => setSort((s) => s === "time" ? "priority" : "time")}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1 transition-all"
-            style={{ background: "#1e1b42", color: "#8b85b8", fontFamily: "'Nunito', sans-serif", border: "1px solid rgba(124,111,247,0.15)" }}
-          >
-            <Star size={11} />
-            {sort === "time" ? "By time" : "By priority"}
-          </button>
         </div>
-      </div>
 
-      {/* Hint */}
-      <div className="px-6 mb-2 flex-shrink-0">
-        <p className="text-xs" style={{ color: "#3d3860", fontFamily: "'Nunito', sans-serif" }}>
-          ← swipe to delete &nbsp;·&nbsp; swipe to complete →
+        {/* Search + filters */}
+        <div className="mt-3">
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2 mb-2.5"
+            style={{ background: "#1e1b42", border: "1px solid rgba(124,111,247,0.12)" }}>
+            <Search size={14} color="#8b85b8" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks..."
+              className="flex-1 bg-transparent text-sm outline-none"
+              style={{ color: "#f0eeff", fontFamily: "'Nunito', sans-serif" }} />
+            {search && <button onClick={() => setSearch("")}><X size={13} color="#8b85b8" /></button>}
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1.5">
+              {(["all","pending","done"] as const).map((f) => (
+                <button key={f} onClick={() => setFilter(f)}
+                  className="px-3 py-1 rounded-full text-xs font-semibold capitalize transition-all"
+                  style={{ fontFamily: "'Nunito', sans-serif", background: filter === f ? "#7c6ff7" : "#1e1b42", color: filter === f ? "#fff" : "#8b85b8", boxShadow: filter === f ? "0 2px 10px rgba(124,111,247,0.4)" : "none" }}>
+                  {f}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setSort((s) => s === "time" ? "priority" : "time")}
+              className="px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1"
+              style={{ background: "#1e1b42", color: "#8b85b8", fontFamily: "'Nunito', sans-serif", border: "1px solid rgba(124,111,247,0.15)" }}>
+              <Star size={10} />
+              {sort === "time" ? "Time" : "Priority"}
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs mt-2" style={{ color: "#3d3860", fontFamily: "'Nunito', sans-serif" }}>
+          ← swipe to delete &nbsp;·&nbsp; → swipe to complete
         </p>
       </div>
 
-      {/* Task list */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6" style={{ scrollbarWidth: "none" }}>
+      {/* Scrollable task list */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-6 pb-6"
+        style={{ scrollbarWidth: "none" }}
+      >
         {filtered.length === 0 && (
           <div className="flex flex-col items-center justify-center pt-12 gap-3">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "#1e1b42", animation: "breathe 3s ease-in-out infinite" }}>
+            <div className="w-16 h-16 rounded-full flex items-center justify-center"
+              style={{ background: "#1e1b42", animation: "breathe 3s ease-in-out infinite" }}>
               <Award size={28} color="#7c6ff7" />
             </div>
             <p className="text-sm font-medium" style={{ color: "#8b85b8", fontFamily: "'Nunito', sans-serif" }}>
@@ -993,7 +1000,7 @@ function HomeScreen({
   );
 }
 
-// ─── Global styles ─────────────────────────────────────────────────────────────
+// ─── Global CSS ────────────────────────────────────────────────────────────────
 
 const GLOBAL_CSS = `
 @keyframes orbFloat {
@@ -1010,7 +1017,7 @@ const GLOBAL_CSS = `
 }
 @keyframes confettiFall {
   0%   { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
-  100% { transform: translateY(120px) rotate(540deg) scale(0); opacity: 0; }
+  100% { transform: translateY(130px) rotate(540deg) scale(0); opacity: 0; }
 }
 @keyframes overdueFlash {
   0%, 100% { opacity: 1; }
@@ -1018,7 +1025,7 @@ const GLOBAL_CSS = `
 }
 @keyframes breathe {
   0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.05); }
+  50%       { transform: scale(1.06); }
 }
 @keyframes shimmerSlide {
   0%   { background-position: -200% 0; }
@@ -1038,18 +1045,17 @@ const GLOBAL_CSS = `
 }
 `;
 
-// ─── App ──────────────────────────────────────────────────────────────────────
+// ─── App Root ─────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [tasks, setTasks]       = useState<Task[]>(INITIAL_TASKS);
   const [tab, setTab]           = useState<Tab>("home");
   const [modalOpen, setModal]   = useState(false);
+  const [profile, setProfile]   = useState<Profile>(INITIAL_PROFILE);
   const [confetti, setConfetti] = useState<{ x: number; y: number; key: number } | null>(null);
 
   const handleComplete = useCallback((id: string, rect: DOMRect) => {
-    setTasks((prev) =>
-      prev.map((t) => t.id === id ? { ...t, completed: !t.completed, completedAt: Date.now() } : t)
-    );
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, completed: !t.completed, completedAt: Date.now() } : t));
     const task = tasks.find((t) => t.id === id);
     if (!task?.completed) {
       setConfetti({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, key: Date.now() });
@@ -1061,28 +1067,23 @@ export default function App() {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const handleAdd = useCallback((task: Omit<Task, "id" | "completed">) => {
+  const handleAdd = useCallback((task: Omit<Task,"id"|"completed">) => {
     setTasks((prev) => [...prev, { ...task, id: Date.now().toString(), completed: false }]);
   }, []);
 
   return (
     <>
       <style>{GLOBAL_CSS}</style>
-
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: "linear-gradient(160deg, #0a0920 0%, #120f3a 100%)" }}
-      >
-        <div
-          className="relative flex flex-col overflow-hidden"
+      <div className="min-h-screen flex items-center justify-center"
+        style={{ background: "linear-gradient(160deg, #0a0920 0%, #120f3a 100%)" }}>
+        <div className="relative flex flex-col overflow-hidden"
           style={{
             width: "min(430px, 100vw)",
             height: "min(900px, 100vh)",
             background: "linear-gradient(180deg, #13113a 0%, #0f0e2a 100%)",
             borderRadius: "clamp(0px, 5vw, 40px)",
             boxShadow: "0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,111,247,0.15)",
-          }}
-        >
+          }}>
           <AmbientOrbs />
 
           {/* Status bar */}
@@ -1095,21 +1096,17 @@ export default function App() {
             </div>
           </div>
 
-          {/* Screen content */}
-          <div className="flex flex-col flex-1 overflow-hidden" style={{ position: "relative", zIndex: 1 }}>
+          {/* Content */}
+          <div className="flex flex-col flex-1 overflow-hidden pb-16" style={{ position: "relative", zIndex: 1 }}>
             {tab === "home" && (
-              <HomeScreen
-                tasks={tasks}
-                onComplete={handleComplete}
-                onDelete={handleDelete}
-                onOpenModal={() => setModal(true)}
-              />
+              <HomeScreen tasks={tasks} profile={profile} onComplete={handleComplete} onDelete={handleDelete} onOpenModal={() => setModal(true)} />
             )}
-            {tab === "stats" && <StatsScreen tasks={tasks} />}
+            {tab === "stats"    && <StatsScreen tasks={tasks} />}
+            {tab === "profile"  && <ProfileScreen profile={profile} setProfile={setProfile} tasks={tasks} />}
             {tab === "settings" && <SettingsScreen />}
           </div>
 
-          <BottomNav tab={tab} setTab={setTab} />
+          <BottomNav tab={tab} setTab={setTab} profile={profile} />
         </div>
       </div>
 
