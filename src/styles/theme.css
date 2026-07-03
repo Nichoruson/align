@@ -179,3 +179,29 @@
     line-height: 1.5;
   }
 }
+
+@utility glass {
+  background: rgba(20, 18, 48, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(124, 111, 247, 0.12);
+}
+
+@utility glass-card {
+  background: rgba(26, 23, 62, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(124, 111, 247, 0.08);
+}
+
+@utility glow-primary {
+  box-shadow: 0 0 20px rgba(124, 111, 247, 0.2);
+}
+
+@utility hide-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
